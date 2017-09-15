@@ -7,14 +7,15 @@ ARCH=${ARCH:?"ARCH not set"}
 SUFFIX=""
 [ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
 
-cd $(dirname $0)/../package
+cd $(dirname $0)/..
 
-TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-rancher}
+mkdir -p dist/artifacts rootfs
+cd rootfs
 
-cp ../bin/per-host-subnet .
+mkdir -p usr/bin
 
-IMAGE=${REPO}/per-host-subnet:${TAG}
-docker build -t ${IMAGE} .
-echo ${IMAGE} > ../dist/images
-echo Built ${IMAGE}
+cp ../bin/per-host-subnet usr/bin/per-host-subnet
+
+tar cvzf ../dist/artifacts/rancher-per-host-subnet-${ARCH}-${VERSION}.tar.gz .
+
+echo "Built rancher-per-host-subnet-${ARCH}-${VERSION}.tar.gz"
