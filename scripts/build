@@ -5,24 +5,28 @@ source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
-mkdir -p bin && rm -rf bin/*
+declare -A OS_ARCH_ARG
 
-go_build() {
-  echo Building for os=$1 arch=$2
-  mkdir -p bin/$1/$2
-  o=bin/$1/$2/per-host-subnet
-  if [ "$1" == "windows" ]; then
-    ldflags="-X main.VERSION=$VERSION -extldflags -static"
-    o="$o.exe"
-  else
-    ldflags="-X main.VERSION=$VERSION -linkmode external -extldflags -static"
-  fi
-  GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -ldflags "$ldflags" -o $o
-}
+OS_PLATFORM_ARG=(linux windows)
+OS_ARCH_ARG[linux]="amd64"
+OS_ARCH_ARG[windows]="amd64"
 
-if [ "$CROSS" == "true" ]; then
-  # go_build linux amd64
-  go_build windows amd64
-else
-  go_build linux amd64
+if [ -n "$CROSS" ]; then
+    rm -rf bin/*
+    mkdir -p bin
+    for OS in ${OS_PLATFORM_ARG[@]}; do
+        for ARCH in ${OS_ARCH_ARG[${OS}]}; do
+            OUTPUT_BIN="bin/$OS/$ARCH/per-host-subnet"
+            LINKFLAGS=" -extldflags -static"
+            if test "$OS" = "windows"; then
+                OUTPUT_BIN="${OUTPUT_BIN}.exe"
+            else
+                LINKFLAGS=" -linkmode external $LINKFLAGS"
+            fi
+            echo "Building binary for $OS/$ARCH..."
+            GOARCH=$ARCH GOOS=$OS CGO_ENABLED=0 go build \
+                  -ldflags="-X main.VERSION=$VERSION $LINKFLAGS" \
+                  -o ${OUTPUT_BIN} ./
+        done
+    done
 fi

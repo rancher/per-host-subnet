@@ -5,7 +5,7 @@ ARG DAPPER_HOST_ARCH
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 
 RUN apt-get update && \
-    apt-get install -y gcc ca-certificates git wget curl vim less file && \
+    apt-get install -y gcc ca-certificates git wget curl vim less file zip && \
     rm -f /bin/sh && ln -s /bin/bash /bin/sh
 
 ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm=armv6l GOLANG_ARCH=GOLANG_ARCH_${ARCH} \
@@ -23,6 +23,7 @@ RUN wget -O - ${!DOCKER_URL} > /usr/bin/docker && chmod +x /usr/bin/docker
 ENV DAPPER_SOURCE /go/src/github.com/rancher/per-host-subnet/
 ENV DAPPER_OUTPUT ./bin ./dist
 ENV DAPPER_DOCKER_SOCKET true
+ENV DAPPER_ENV CROSS
 ENV TRASH_CACHE ${DAPPER_SOURCE}/.trash-cache
 ENV HOME ${DAPPER_SOURCE}
 WORKDIR ${DAPPER_SOURCE}
