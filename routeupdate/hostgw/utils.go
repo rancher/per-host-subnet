@@ -9,6 +9,10 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	agentIPLabel = "io.rancher.network.per_host_subnet.override_agent_ip"
+)
+
 func getHostSubnet(host metadata.Host) (*net.IPNet, error) {
 	ipnet, err := netlink.ParseIPNet(host.Labels[perHostSubnetLabel])
 	if err != nil {
@@ -18,7 +22,7 @@ func getHostSubnet(host metadata.Host) (*net.IPNet, error) {
 }
 
 func getCurrentRouteEntries(host metadata.Host) (map[string]*netlink.Route, error) {
-	routeFilter := &netlink.Route{Src: net.ParseIP(host.AgentIP)}
+	routeFilter := &netlink.Route{Src: net.ParseIP(getAgentIP(host))}
 	existRoutes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_SRC)
 	if err != nil {
 		logrus.Errorf("Failed to getCurrentRouteEntries, RouteList: %v", err)
@@ -27,7 +31,7 @@ func getCurrentRouteEntries(host metadata.Host) (map[string]*netlink.Route, erro
 
 	routeEntries := make(map[string]*netlink.Route)
 	for index, r := range existRoutes {
-		if !r.Dst.Contains(net.ParseIP(host.AgentIP)) {
+		if !r.Dst.Contains(net.ParseIP(getAgentIP(host))) {
 			gwIP := r.Gw.String()
 			routeEntries[gwIP] = &existRoutes[index]
 		}
@@ -48,10 +52,10 @@ func getDesiredRouteEntries(selfHost metadata.Host, allHosts []metadata.Host) (m
 			}
 			r := &netlink.Route{
 				Dst: dst,
-				Src: net.ParseIP(selfHost.AgentIP),
-				Gw:  net.ParseIP(h.AgentIP),
+				Src: net.ParseIP(getAgentIP(selfHost)),
+				Gw:  net.ParseIP(getAgentIP(h)),
 			}
-			routeEntries[h.AgentIP] = r
+			routeEntries[getAgentIP(h)] = r
 		}
 	}
 
@@ -84,4 +88,11 @@ func updateRoutes(oldEntries map[string]*netlink.Route, newEntries map[string]*n
 	}
 
 	return e
+}
+
+func getAgentIP(host metadata.Host) string {
+	if v, ok := host.Labels[agentIPLabel]; ok {
+		return v
+	}
+	return host.AgentIP
 }
