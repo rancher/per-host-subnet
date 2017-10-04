@@ -5,6 +5,24 @@ source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
-mkdir -p bin
-[ "$(uname)" != "Darwin" ] && LINKFLAGS="-linkmode external -extldflags -static -s"
-CGO_ENABLED=0 go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/per-host-subnet
+mkdir -p bin && rm -rf bin/*
+
+go_build() {
+  echo Building for os=$1 arch=$2
+  mkdir -p bin/$1/$2
+  o=bin/$1/$2/per-host-subnet
+  if [ "$1" == "windows" ]; then
+    ldflags="-X main.VERSION=$VERSION -extldflags -static"
+    o="$o.exe"
+  else
+    ldflags="-X main.VERSION=$VERSION -linkmode external -extldflags -static"
+  fi
+  GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -ldflags "$ldflags" -o $o
+}
+
+if [ "$CROSS" == "true" ]; then
+  # go_build linux amd64
+  go_build windows amd64
+else
+  go_build linux amd64
+fi
