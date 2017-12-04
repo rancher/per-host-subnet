@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/per-host-subnet/hostnat"
+	"github.com/rancher/per-host-subnet/hostports"
 	"github.com/rancher/per-host-subnet/register"
 	"github.com/rancher/per-host-subnet/routeupdate"
 	"github.com/rancher/per-host-subnet/setting"
@@ -86,5 +87,9 @@ func appMain(ctx *cli.Context) error {
 		return err
 	}
 
+	err = hostports.Watch(m)
+	if err != nil {
+		return err
+	}
 	return <-done
 }
