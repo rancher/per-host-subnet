@@ -2,6 +2,7 @@
 $SubnetKey="io.rancher.network.per_host_subnet.subnet"
 $routerIpKey="io.rancher.network.per_host_subnet.router_ip"
 $hypervAdapterMark="Hyper-V Virtual Ethernet Adapter*"
+$LoopbackAdapterMark="Microsoft KM-TEST Loopback Adapter"
 $RancherLabelKey="CATTLE_HOST_LABELS"
 $defaultNetworkName="transparent"
 $networkDriverName="transparent"
@@ -202,6 +203,11 @@ function SetMetadataRoute  {
         [uint32]$ifIndex
     )
     process{
+        <#When we deploy it into aws, default 169.254.169.250 route needs to be remove and reset.#>
+        $curr=get-netroute "169.254.169.250/32" -ErrorAction Ignore 
+        if($curr -ne $null){
+            $curr | remove-netroute -Confirm:$false
+        }
         if($ifIndex -eq 0){
             return
         }
@@ -230,7 +236,7 @@ function SetupRRASNat{
 function installVirtualNic  {
     $_=$(& "c:\program files\rancher\devcon.exe" -r install $env:windir\Inf\Netloop.inf *MSLOOP)
     sleep 10
-    return (Get-NetAdapter | Sort-Object -Property ifIndex -Descending | Select-Object -First 1).Name
+    return (Get-NetAdapter | Where-Object {$_.InterfaceDescription -eq "$LoopbackAdapterMark"}).Name
 }
 
 $subnet=GetLabels -Key $SubnetKey 
@@ -253,8 +259,8 @@ if("$subnet" -ne ""){
     $ifIndex= GenerateNetwork $subnet $adapterName
 }
 $_=(netsh advfirewall set allprofile state off)
-RestartRRAS
 SetupRRASNat
+RestartRRAS
 SetMetadataRoute $ifIndex
 $service=get-service rancher-per-host-subnet -ErrorAction Ignore
 if($service -ne $null){
