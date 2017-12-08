@@ -6,7 +6,6 @@ $LoopbackAdapterMark="Microsoft KM-TEST Loopback Adapter"
 $RancherLabelKey="CATTLE_HOST_LABELS"
 $defaultNetworkName="transparent"
 $networkDriverName="transparent"
-
 function CheckNetwork([string]$Subnet) {
     
     $output=docker network inspect $defaultNetworkName 2>$null
@@ -30,7 +29,7 @@ function GenerateNetwork([string]$subnet,[string]$interfaceName) {
         return 0
     }
     $interfaceMAC=(get-netadapter -Name "$interfaceName").MacAddress
-    $uuid=docker network create -d $networkDriverName --subnet $subnet --gateway $gateway -o com.docker.network.windowsshim.interface="$interfaceName" $defaultNetworkName 2>$null
+    $uuid=docker network create -d $networkDriverName --subnet $subnet --gateway $gateway -o com.docker.network.windowsshim.interface="$interfaceName" -o com.docker.network.windowsshim.dnsservers="$dnsservers" $defaultNetworkName 2>$null
     if(-not $(CheckNetwork $subnet)){
         Write-Error "generate network error"
     }
@@ -217,14 +216,8 @@ function SetMetadataRoute  {
 
 function SetupRRASNat{
     process{
-        $routerip= GetLabels $routerIpKey
-        $routeripadd=Get-NetIPAddress -IPAddress "$routerip" -ErrorAction Ignore 
-        if($routeripadd -eq $null){
-            throw "$routerip not found"
-        }
         $_=$(netsh routing ip nat install)
-        $adapters=$(Get-netadapter |where-object {$_.InterfaceDescription -NotLike "$hypervAdapterMark" -and $_.ifIndex -ne $routeripadd.InterfaceIndex})
-        foreach($adapter in $adapters){
+        foreach($adapter in $natAdapters){
             $_=$(netsh routing ip nat add interface "$($adapter.Name)" full  2>$err)
             if($err -ne $null){
                 throw "$err"
@@ -239,6 +232,29 @@ function installVirtualNic  {
     return (Get-NetAdapter | Where-Object {$_.InterfaceDescription -eq "$LoopbackAdapterMark"}).Name
 }
 
+function Get-NeededNatAdapters{
+    $routerip= GetLabels $routerIpKey
+    $routeripadd=Get-NetIPAddress -IPAddress "$routerip" -ErrorAction Ignore 
+    if($routeripadd -eq $null){
+        throw "$routerip not found"
+    }
+    return $(Get-netadapter |where-object {$_.InterfaceDescription -NotLike "$hypervAdapterMark" -and $_.ifIndex -ne $routeripadd.InterfaceIndex})
+}
+
+function Get-NatDNSServers ($natAdapters) {
+    $dnsservers=@{}
+    foreach ($adapter in $natAdapters) {
+        $dservers=($adapter | Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses
+        foreach ($ds in $dservers) {
+            $dnsservers["$ds"]=$true
+        }
+    }
+    $rtn= ($dnsservers.Keys -join ",")
+    return $rtn
+}
+
+$natAdapters=Get-NeededNatAdapters
+$dnsservers=Get-NatDNSServers $natAdapters
 $subnet=GetLabels -Key $SubnetKey 
 $ifIndex=0
 if("$subnet" -ne ""){
