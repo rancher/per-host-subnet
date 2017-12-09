@@ -8,6 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher-metadata/metadata"
 	"github.com/rancher/per-host-subnet/hostnat"
+	"github.com/rancher/per-host-subnet/hostports"
+	"github.com/rancher/per-host-subnet/register"
 	"github.com/rancher/per-host-subnet/routeupdate"
 	"github.com/rancher/per-host-subnet/setting"
 	"github.com/urfave/cli"
@@ -39,6 +41,14 @@ func main() {
 			EnvVar: "RANCHER_ROUTE_UPDATE_PROVIDER",
 			Value:  setting.DefaultRouteUpdateProvider,
 		},
+		cli.BoolFlag{
+			Name:  "register-service",
+			Usage: "Register windows service, invalid for non windows OS.",
+		},
+		cli.BoolFlag{
+			Name:  "unregister-service",
+			Usage: "Unregister windows service, invalid for non windows OS.",
+		},
 	}
 	app.Action = appMain
 	if err := app.Run(os.Args); err != nil {
@@ -49,6 +59,13 @@ func main() {
 func appMain(ctx *cli.Context) error {
 	if ctx.Bool("debug") {
 		logrus.SetLevel(logrus.DebugLevel)
+	}
+
+	if ctx.Bool("register-service") && ctx.Bool("unregister-service") {
+		logrus.Fatal("Can not use flag register-service and unregister-service at the same time")
+	}
+	if err := register.Init(ctx.Bool("register-service"), ctx.Bool("unregister-service")); err != nil {
+		return err
 	}
 
 	done := make(chan error)
@@ -70,5 +87,9 @@ func appMain(ctx *cli.Context) error {
 		return err
 	}
 
+	err = hostports.Watch(m)
+	if err != nil {
+		return err
+	}
 	return <-done
 }
