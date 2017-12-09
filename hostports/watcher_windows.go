@@ -9,11 +9,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/orangedeng/go-winnat"
+	"github.com/rancher/go-winnat"
 
 	"github.com/Sirupsen/logrus"
-	natdrivers "github.com/orangedeng/go-winnat/drivers"
 	"github.com/rancher/go-rancher-metadata/metadata"
+	natdrivers "github.com/rancher/go-winnat/drivers"
 )
 
 const (

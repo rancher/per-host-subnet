@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
-	winroute "github.com/orangedeng/win-route-netsh"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher-metadata/metadata"
+	winroute "github.com/rancher/win-route-netsh"
 )
 
 func (p *HostGw) getCurrentRouteEntries(iface net.Interface, host metadata.Host, subnet *net.IPNet) (map[string]*winroute.RouteRow, error) {
