@@ -15,7 +15,7 @@ package (){
         cp ../bin/$1/$2/per-host-subnet.exe rancher/per-host-subnet.exe
         cp ../startup_per-host-subnet.ps1 rancher/startup_per-host-subnet.ps1
         zip -r ../dist/artifacts/rancher-per-host-subnet.zip rancher/
-        echo "Built ranchet-per-host-subnet.zip"
+        echo "Built rancher-per-host-subnet.zip"
     else
         mkdir -p usr/bin
         cp ../bin/$1/$2/per-host-subnet usr/bin/per-host-subnet
