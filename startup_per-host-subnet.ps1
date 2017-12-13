@@ -196,6 +196,7 @@ function RestartRRAS  {
         set-service remoteaccess -StartupType Automatic
     }
     restart-service remoteaccess
+    Start-Sleep 5
 }
 function SetMetadataRoute  {
     param(
@@ -275,8 +276,8 @@ if("$subnet" -ne ""){
     $ifIndex= GenerateNetwork $subnet $adapterName
 }
 $_=(netsh advfirewall set allprofile state off)
-SetupRRASNat
 RestartRRAS
+SetupRRASNat
 SetMetadataRoute $ifIndex
 $service=get-service rancher-per-host-subnet -ErrorAction Ignore
 if($service -ne $null){
