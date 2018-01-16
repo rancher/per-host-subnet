@@ -1,12 +1,14 @@
-[Reflection.Assembly]::LoadWithPartialName("System.Web") | Out-Null
+## rancher-tools.psm1 will be exsit in c:\program files\rancher and same path as this script
+## rancher-tools.psm1 is matained in rancher/rancher
+Import-Module -Name ./rancher-tools.psm1 -Verbose
+
 $SubnetKey="io.rancher.network.per_host_subnet.subnet"
 $routerIpKey="io.rancher.network.per_host_subnet.router_ip"
 $hypervAdapterMark="Hyper-V Virtual Ethernet Adapter*"
 $LoopbackAdapterMark="Microsoft KM-TEST Loopback Adapter"
-$RancherLabelKey="CATTLE_HOST_LABELS"
 $defaultNetworkName="transparent"
 $networkDriverName="transparent"
-function CheckNetwork([string]$Subnet) {
+function Test-TransparentNetwork([string]$Subnet) {
     
     $output=docker network inspect $defaultNetworkName 2>$null
     if ("$output" -eq "[]"){
@@ -18,51 +20,37 @@ function CheckNetwork([string]$Subnet) {
     }
     return $true
 }
-function GenerateNetwork([string]$subnet,[string]$interfaceName) {
-    $gateway,$subnetip,$MaskLength=ConventGateway-FromCIDR($subnet)
+function New-TransparentNetwork([string]$subnet,[string]$interfaceName) {
+    $gateway,$subnetip,$MaskLength = ConvertTo-GatewayFromCidr $subnet
     if(("$gateway" -eq "") -or ("$subnet" -eq "")){
-        Write-Error "subnet $subnet is not valid"
-        return 0
+        throw "subnet $subnet is not valid"
     }
     if("$interfaceName" -eq ""){
-        Write-Error "Adatper Name $AdapterName is not valid"
-        return 0
+        throw "Adatper Name $AdapterName is not valid"
     }
     $interfaceMAC=(get-netadapter -Name "$interfaceName").MacAddress
     $uuid=docker network create -d $networkDriverName --subnet $subnet --gateway $gateway -o com.docker.network.windowsshim.interface="$interfaceName" -o com.docker.network.windowsshim.dnsservers="$dnsservers" $defaultNetworkName 2>$null
-    if(-not $(CheckNetwork $subnet)){
-        Write-Error "generate network error"
+    if(-not $(Test-TransparentNetwork $subnet)){
+        throw "generate network error, docker network create faild"
     }
     $newIndex=(get-netadapter |Where-Object {$_.macaddress -eq "$interfaceMAC"} |Sort-Object -Property ifindex -Descending|Select-Object -First 1 ).ifIndex
     $add=New-NetIpAddress -ifIndex $newIndex -ipaddress $gateway -prefixLength $MaskLength
     return $newIndex
 }
-function CleanUpNetwork{
+function Remove-RancherNetwork{
 
     $body=docker network inspect $defaultNetworkName 2>$null
     if("$body" -eq "[]"){
-    return
+        return
     }
     $output=$(docker network rm $defaultNetworkName 2>$null)
     if("$output" -ne "$defaultNetworkName"){
-    throw "remove $defaultNetworkName fail"
+        throw "remove $defaultNetworkName fail"
     }
 }
-function GetLabels([string]$Key){
-   try{
-       $labels= [System.Environment]::GetEnvironmentVariable("$RancherLabelKey","Machine")
-       if($labels -eq ""){
-           return ""
-       }
-       $qs=[System.Web.HttpUtility]::ParseQueryString($labels)
-       return $qs["$Key"]
-   }
-   catch{
-    return ""
-   }
-}
+
 # return gateway subnet maskLength
-function ConventGateway-FromCIDR  {
+function ConvertTo-GatewayFromCidr  {
     param(
         [string]$cidr
     )
@@ -234,7 +222,7 @@ function installVirtualNic  {
 }
 
 function Get-NeededNatAdapters{
-    $routerip= GetLabels $routerIpKey
+    $routerip= Get-RancherLabel $routerIpKey
     $routeripadd=Get-NetIPAddress -IPAddress "$routerip" -ErrorAction Ignore 
     if($routeripadd -eq $null){
         throw "$routerip not found"
@@ -254,33 +242,32 @@ function Get-NatDNSServers ($natAdapters) {
     return $rtn
 }
 
-$natAdapters=Get-NeededNatAdapters
-$dnsservers=Get-NatDNSServers $natAdapters
-$subnet=GetLabels -Key $SubnetKey 
-$ifIndex=0
-if("$subnet" -ne ""){
-    $adapterName=installVirtualNic
-    if(-not $(CheckNetwork -Subnet $subnet)){
-        try{
-        CleanUpNetwork
-        $ifIndex= GenerateNetwork $subnet $adapterName
-        }
-        catch{
-            Write-Error "Generate network error"
-            exit 1
+try{
+    $natAdapters=Get-NeededNatAdapters
+    $dnsservers=Get-NatDNSServers $natAdapters
+    $subnet=Get-RancherLabel -Key $SubnetKey 
+    $ifIndex=0
+    if("$subnet" -ne ""){
+        $adapterName=installVirtualNic
+        if(-not $(Test-TransparentNetwork -Subnet $subnet)){
+            Remove-RancherNetwork
+            $ifIndex= New-TransparentNetwork $subnet $adapterName
+        } else {
+
         }
     } else {
-
+        $ifIndex= New-TransparentNetwork $subnet $adapterName
     }
-} else {
-    $ifIndex= GenerateNetwork $subnet $adapterName
+    $_=(netsh advfirewall set allprofile state off)
+    RestartRRAS
+    SetupRRASNat
+    SetMetadataRoute $ifIndex
+    $service=get-service rancher-per-host-subnet -ErrorAction Ignore
+    if($service -ne $null){
+        & 'C:\Program Files\rancher\per-host-subnet.exe' --unregister-service
+    }
+    & 'C:\Program Files\rancher\per-host-subnet.exe' --register-service
 }
-$_=(netsh advfirewall set allprofile state off)
-RestartRRAS
-SetupRRASNat
-SetMetadataRoute $ifIndex
-$service=get-service rancher-per-host-subnet -ErrorAction Ignore
-if($service -ne $null){
-    & 'C:\Program Files\rancher\per-host-subnet.exe' --unregister-service
+catch {
+    Throw $Error[0]
 }
-& 'C:\Program Files\rancher\per-host-subnet.exe' --register-service
