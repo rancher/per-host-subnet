@@ -20,7 +20,12 @@ function Test-TransparentNetwork([string]$Subnet) {
     }
     return $true
 }
-function New-TransparentNetwork([string]$subnet,[string]$interfaceName) {
+function New-TransparentNetwork {
+    param(
+        [string]$subnet,
+        [string]$interfaceName,
+        [array]$dnsservers
+    )
     $gateway,$subnetip,$MaskLength = ConvertTo-GatewayFromCidr $subnet
     if(("$gateway" -eq "") -or ("$subnet" -eq "")){
         throw "subnet $subnet is not valid"
@@ -204,6 +209,9 @@ function SetMetadataRoute  {
 }
 
 function SetupRRASNat{
+    param(
+        [array]$natAdapters
+    )
     process{
         $_=$(netsh routing ip nat install)
         foreach($adapter in $natAdapters){
@@ -227,14 +235,17 @@ function Get-NeededNatAdapters{
     if($routeripadd -eq $null){
         throw "$routerip not found"
     }
-    return $(Get-netadapter |where-object {$_.InterfaceDescription -NotLike "$hypervAdapterMark" -and $_.ifIndex -ne $routeripadd.InterfaceIndex})
+    return $(Get-netadapter |where-object {$_.InterfaceDescription -NotLike "$hypervAdapterMark" -and $_.ifIndex -ne $routeripadd.InterfaceIndex -and $_.InterfaceDescription -notlike "$LoopbackAdapterMark"})
 }
 
 function Get-NatDNSServers ($natAdapters) {
     $dnsservers=@{}
     foreach ($adapter in $natAdapters) {
-        $dservers=($adapter | Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses
-        foreach ($ds in $dservers) {
+        $dservers=($adapter | Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction ignore)
+        if($dservers -eq $null){
+            continue
+        }
+        foreach ($ds in $dservers.ServerAddresses) {
             $dnsservers["$ds"]=$true
         }
     }
@@ -243,30 +254,28 @@ function Get-NatDNSServers ($natAdapters) {
 }
 
 try{
+    $ifIndex=0
     $natAdapters=Get-NeededNatAdapters
     $dnsservers=Get-NatDNSServers $natAdapters
     $subnet=Get-RancherLabel -Key $SubnetKey 
-    $ifIndex=0
-    if("$subnet" -ne ""){
-        $adapterName=installVirtualNic
-        if(-not $(Test-TransparentNetwork -Subnet $subnet)){
-            Remove-RancherNetwork
-            $ifIndex= New-TransparentNetwork $subnet $adapterName
-        } else {
-
-        }
-    } else {
-        $ifIndex= New-TransparentNetwork $subnet $adapterName
+    if ("$subnet" -eq ""){
+        throw "Can not get configured subnet"
     }
-    $_=(netsh advfirewall set allprofile state off)
-    RestartRRAS
-    SetupRRASNat
-    SetMetadataRoute $ifIndex
+    if (-not $(Test-TransparentNetwork -Subnet $subnet)){
+        $adapterName=installVirtualNic
+        Remove-RancherNetwork
+        $ifIndex= New-TransparentNetwork $subnet $adapterName
+        $_=(netsh advfirewall set allprofile state off)
+        RestartRRAS
+        SetupRRASNat $natAdapters
+        SetMetadataRoute $ifIndex
+    }
     $service=get-service rancher-per-host-subnet -ErrorAction Ignore
     if($service -ne $null){
         & 'C:\Program Files\rancher\per-host-subnet.exe' --unregister-service
     }
     & 'C:\Program Files\rancher\per-host-subnet.exe' --register-service
+    start-service rancher-per-host-subnet
 }
 catch {
     Throw $Error[0]
