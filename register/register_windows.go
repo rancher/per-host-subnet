@@ -29,6 +29,7 @@ const (
 	logFile          = "C:/ProgramData/rancher/per-host-subnet.log"
 	rancherPanicFile = "C:/ProgramData/rancher/per-host-subnet_panic.log"
 	homeDir          = "C:/ProgramData/rancher"
+	restartCommand   = `"powershell.exe" -File "c:\program files\rancher\crash-loop.ps1" per-host-subnet`
 	// These should match the values in event_messages.mc.
 	eventInfo  = 1
 	eventWarn  = 1
@@ -199,11 +200,17 @@ func registerService() error {
 		Delay uint32
 	}
 	t := []scAction{
-		{Type: scActionRestart, Delay: uint32(60 * time.Second / time.Millisecond)},
-		{Type: scActionRestart, Delay: uint32(60 * time.Second / time.Millisecond)},
-		{Type: scActionNone},
+		{Type: scActionRunCommand, Delay: uint32(15 * time.Second / time.Millisecond)},
+		{Type: scActionRunCommand, Delay: uint32(15 * time.Second / time.Millisecond)},
+		{Type: scActionRunCommand, Delay: uint32(15 * time.Second / time.Millisecond)},
 	}
-	lpInfo := serviceFailureActions{ResetPeriod: uint32(24 * time.Hour / time.Second), ActionsCount: uint32(3), Actions: uintptr(unsafe.Pointer(&t[0]))}
+	cmd, _ := syscall.UTF16PtrFromString(restartCommand)
+	lpInfo := serviceFailureActions{
+		ResetPeriod:  uint32(24 * time.Hour / time.Second),
+		ActionsCount: uint32(3),
+		Actions:      uintptr(unsafe.Pointer(&t[0])),
+		Command:      cmd,
+	}
 	err = windows.ChangeServiceConfig2(s.Handle, serviceConfigFailureActions, (*byte)(unsafe.Pointer(&lpInfo)))
 	if err != nil {
 		return err
