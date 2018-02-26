@@ -264,7 +264,7 @@ try{
     if (-not $(Test-TransparentNetwork -Subnet $subnet)){
         $adapterName=installVirtualNic
         Remove-RancherNetwork
-        $ifIndex= New-TransparentNetwork $subnet $adapterName
+        $ifIndex= New-TransparentNetwork $subnet $adapterName $dnsservers
         $_=(netsh advfirewall set allprofile state off)
         RestartRRAS
         SetupRRASNat $natAdapters
